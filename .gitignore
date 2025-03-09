@@ -21,7 +21,6 @@ __pycache__/
 .ipynb_checkpoints/
 
 # Logs and temporary files
-logs/
 *.log
 
 # IDE
