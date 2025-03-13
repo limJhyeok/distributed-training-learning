@@ -12,38 +12,9 @@ from torch.distributed.tensor.parallel import (
     ColwiseParallel,
     RowwiseParallel,
 )
-from torch.distributed._tensor.device_mesh import init_device_mesh
+from torch.distributed.tensor.device_mesh import init_device_mesh
 import utils
-
-
-class ToyModel(nn.Module):
-    def __init__(self, in_features: int, out_features: int):
-        super(ToyModel, self).__init__()
-        self.in_proj = nn.Linear(in_features, 2 * in_features)
-        self.relu = nn.ReLU()
-        self.out_proj = nn.Linear(2 * in_features, out_features)
-
-    def forward(self, x: torch.tensor) -> torch.tensor:
-        return self.out_proj(self.relu(self.in_proj(x)))
-
-
-def train_setp(
-    model: nn.Module,
-    optimizer: torch.optim,
-    inputs: torch.tensor,
-    targets: torch.tensor,
-    loss_fn: torch.nn,
-    num_iters: int,
-) -> None:
-    print("Tensor Parallel training starting...")
-    for i in range(num_iters):
-        optimizer.zero_grad()
-        outputs = model(inputs)
-        loss = loss_fn(outputs, targets)
-        loss.backward()
-        optimizer.step()
-        print(f"iter: {i + 1}/{num_iters} | Loss: {loss.item()}")
-
+import models
 
 if __name__ == "__main__":
     # seed
@@ -74,7 +45,7 @@ if __name__ == "__main__":
 
     inputs = torch.randn(batch_size, in_features).to(device)
     targets = torch.randn(batch_size, out_features).to(device)
-    model = ToyModel(in_features, out_features).to(device)
+    model = models.ToyModel(in_features, out_features).to(device)
     model.train()
 
     # Custom parallelization plan for the model
@@ -88,6 +59,6 @@ if __name__ == "__main__":
     )
     optimizer = torch.optim.AdamW(tp_model.parameters(), lr=lr)
 
-    train_setp(tp_model, optimizer, inputs, targets, loss_fn, num_iters)
+    utils.train_step(tp_model, optimizer, inputs, targets, loss_fn, num_iters)
 
     dist.destroy_process_group()
