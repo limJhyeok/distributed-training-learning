@@ -3,6 +3,8 @@ import torch
 import json
 import torch.nn as nn
 from typing import Callable
+from torch.distributed.pipelining import PipelineStage
+import config
 
 
 class SimpleDictLogger:
@@ -68,6 +70,60 @@ def train_step(
 
         for hook in hooks:
             hook(step_info)
+
+
+def create_pipeline_stage(
+    model_architecture: nn.Module,
+    model_args: config.ModelArgs,
+    stage_index: int,
+    num_stages: int,
+    device: torch.device,
+    example_input: torch.Tensor,
+):
+    """
+    Creates a pipeline stage by constructing the full model in torch meta device and keeping only the relevant layers for the given stage.
+
+    * c.f) "meta" device
+        | This significantly reduces memory usage and enables flexible model partitioning.
+        | for more information, see: https://pytorch.org/docs/stable/meta.html
+        | Using the "meta" device allows us to define the model structure without allocating memory for parameters.
+
+    Args:
+        model_architecture (nn.Module): Model architecture to build following ModelArgs.
+        model_args (ModelArgs): Model configuration parameters.
+        stage_index (int): Index of the current stage in the pipeline.
+        num_stages (int): Total number of pipeline stages.
+        device (torch.device): Device on which to place the model.
+        example_input (torch.Tensor): Example input tensor for defining the stage.
+
+    Returns:
+        PipelineStage: The configured pipeline stage.
+    """
+    assert num_stages == 2, "This function is designed for a simple 2-stage pipeline."
+
+    with torch.device("meta"):
+        model = model_architecture(model_args)
+
+        if stage_index == 0:
+            # Retain only the first half of the layers for stage 0.
+            for i in range(4, 8):
+                del model.layers[str(i)]
+            model.norm = None  # Stage 0 does not require LayerNorm
+            model.output = None  # Output layer is only needed in the final stage
+        elif stage_index == 1:
+            # Retain only the second half of the layers for stage 1.
+            model.tok_embeddings = None  # Token embedding is only needed in stage 0
+            for i in range(4):
+                del model.layers[str(i)]
+
+        # Use .to_empty() to materialize the model on the actual device (from meta) without initializing parameters.
+        return PipelineStage(
+            model.to_empty(device=device),
+            stage_index,
+            num_stages,
+            device,
+            input_args=example_input,  # Fake input to initialize the pipeline stage
+        )
 
 
 def simple_dict_logging_training_step_hook(step_info: dict):
