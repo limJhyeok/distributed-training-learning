@@ -32,7 +32,10 @@ if __name__ == "__main__":
     targets = torch.randn(3, 5).to(rank)
 
     # log
-    data_log = {"inputs": inputs.cpu().numpy().tolist(), "targets": targets.cpu().numpy().tolist()}
+    data_log = {
+        "inputs": inputs.cpu().numpy().tolist(),
+        "targets": targets.cpu().numpy().tolist(),
+    }
     utils.SimpleDictLogger.log(data_log)
 
     model = models.ToyModel(in_features, out_features).to(rank)
@@ -42,7 +45,9 @@ if __name__ == "__main__":
 
     hooks = [utils.simple_dict_logging_training_step_hook]
 
-    utils.train_step(ddp_model, optimizer, inputs, targets, loss_fn, num_iters, hooks = hooks)
+    utils.train_step(
+        ddp_model, optimizer, inputs, targets, loss_fn, num_iters, hooks=hooks
+    )
 
     # log save
     dir_name = "logs"
